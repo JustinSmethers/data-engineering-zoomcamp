@@ -14,32 +14,45 @@ def main(params):
     table_name = params.table_name
     url = params.url
 
-    # Download the parquet file and output it as file_name
-    file_name = 'output.parquet'
+    # Get the file name from the url
+    if '.parquet' in url.lower():
+        file_name = 'output.parquet'
+        is_parquet = True
+    elif '.csv' in url.lower():
+        file_name = 'output.csv'
+        is_parquet = False
+    else:
+        raise ValueError('File must be either .parquet or .csv')
+    
+    # Download the file from the url
     os.system(f'wget {url} -O {file_name}')
 
     # Create a connection to the database
     engine = create_engine(f'postgresql://{user}:{password}@{host}:{port}/{db}')
 
-    # Read the parquet file into a pandas dataframe
-    df = pd.read_parquet(file_name, engine='pyarrow')
+    if is_parquet:
+        file = pq.ParquetFile(file_name)
+        # Iterate through the parquet file in batches
+        for batch in file.iter_batches():
+            # Convert the batch to a pandas dataframe
+            df = batch.to_pandas()
+            # Convert the datetime columns to datetime objects
+            df['tpep_pickup_datetime'] = pd.to_datetime(df['tpep_pickup_datetime'])
+            df['tpep_dropoff_datetime'] = pd.to_datetime(df['tpep_dropoff_datetime'])
+            # Insert the data into the database
+            df.to_sql(name=table_name, con=engine, if_exists='append', index=False)
 
-    # Convert the datetime columns to datetime objects
-    df['tpep_pickup_datetime'] = pd.to_datetime(df['tpep_pickup_datetime'])
-    df['tpep_dropoff_datetime'] = pd.to_datetime(df['tpep_dropoff_datetime'])
+            print(f'\nInserted {len(df)} rows into {table_name}')
 
-    # Write the dataframe to the database in batches
-    total_rows = len(df)
-    rows_inserted = 0
-    file = pq.ParquetFile(file_name)
+    else:
+        # Iterate through the csv file in batches
+        df = pd.read_csv(file_name)
+        rows_inserted = 0
+        # Insert the data into the database
+        df.to_sql(name=table_name, con=engine, if_exists='append', index=False)
+        rows_inserted += len(df)
 
-    for batch in file.iter_batches():
-        df_iter = batch.to_pandas()
-        df_iter.to_sql(name=table_name, con=engine, if_exists='append', index=False)
-
-        rows_inserted += len(df_iter)
-        percent_done= round(rows_inserted / total_rows * 100, 1)
-        print(f'\nInserted {len(df_iter)} more rows, {percent_done}% done')
+        print(f'\nInserted {len(df)} rows into {table_name}')
 
 
 if __name__ == '__main__':
