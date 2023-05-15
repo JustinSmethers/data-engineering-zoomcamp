@@ -3,12 +3,9 @@ from sqlalchemy import create_engine
 import pyarrow.parquet as pq
 import argparse
 import os
-from prefect import flow, task
-from prefect.tasks import task_input_hash
-from datetime import timedelta
 
-@task(log_prints=True, retries=3, cache_key_fn=task_input_hash, cache_expiration=timedelta(days=1))
-def extract_data(params):
+
+def main(params):
     user = params.user
     password = params.password
     host = params.host
@@ -16,6 +13,7 @@ def extract_data(params):
     db = params.db
     table_name = params.table_name
     url = params.url
+
     # Get the file name from the url
     if '.parquet' in url.lower():
         file_name = 'output.parquet'
@@ -32,15 +30,6 @@ def extract_data(params):
     # Create a connection to the database
     engine = create_engine(f'postgresql://{user}:{password}@{host}:{port}/{db}')
 
-@task(log_prints=True)
-def transform_data(df):
-    print(f"pre: missing passenger count: {df['passenger_count'].isin([0]).sum()}")
-    df = df[df['passenger_count'] != 0]
-    print(f"post: missing passenger count: {df['passenger_count'].isin([0]).sum()}")
-    return df
-
-@task(log_prints=True, retries=3)
-def ingest_data(params, is_parquet):
     if is_parquet:
         file = pq.ParquetFile(file_name)
         # Iterate through the parquet file in batches
@@ -65,8 +54,8 @@ def ingest_data(params, is_parquet):
 
         print(f'\nInserted {len(df)} rows into {table_name}')
 
-@flow(name='Ingest Flow')
-def main_flow():
+
+if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Ingest parquet data to Postgres')
 
     parser.add_argument('--user', help='Postgres user')
@@ -79,10 +68,4 @@ def main_flow():
 
     args = parser.parse_args()
 
-    raw_data = extract_data(args)
-    data = transform_data(raw_data)
-    ingest_data(args)
-
-
-if __name__ == '__main__':
-    main_flow()
+    main(args)
