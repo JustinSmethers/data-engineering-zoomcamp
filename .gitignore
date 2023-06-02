@@ -15,7 +15,6 @@ serving_dir
 *.csv
 .ipynb_checkpoints/
 !week_6_stream_processing/avro_example/data/rides.csv
-de-camp-2023-6ffdc5d81e08.json                   
 **.parquet
 services.txt
 notes.md
